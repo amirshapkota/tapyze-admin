@@ -16,8 +16,10 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Call your backend API to verify token and get admin data
-    const backendResponse = await fetch(`${process.env.BACKEND_URL}/api/admin/me`, {
+    // just verify the token exists and is valid
+    // call protected admin endpoint to verify the token
+    // eg get admin list (just to verify token, not use the data)
+    const backendResponse = await fetch(`${process.env.BACKEND_URL}/api/admin/admins`, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -29,7 +31,10 @@ export async function GET(request: NextRequest) {
 
     if (!backendResponse.ok) {
       // If token is invalid, clear the cookie
-      const response = NextResponse.json(data, { status: backendResponse.status });
+      const response = NextResponse.json(
+        { status: 'error', message: 'Invalid token' }, 
+        { status: 401 }
+      );
       response.cookies.set({
         name: 'admin-token',
         value: '',
@@ -42,7 +47,15 @@ export async function GET(request: NextRequest) {
       return response;
     }
 
-    return NextResponse.json(data);
+    // Since no admin profile data from this endpoint,
+    // return a success response indicating the token is valid
+    return NextResponse.json({
+      status: 'success',
+      message: 'Token is valid',
+      data: {
+        authenticated: true
+      }
+    });
 
   } catch (error) {
     console.error('Admin me error:', error);
