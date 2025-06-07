@@ -67,7 +67,14 @@ export default function CustomersPage() {
       const data = await response.json()
       
       if (data.status === 'success') {
-        setCustomers(data.data.customers || [])
+        // Process customers to ensure wallet data is properly handled
+        const processedCustomers = (data.data.customers || []).map((customer: any) => ({
+          ...customer,
+          wallet: customer.wallet || { balance: 0, currency: 'NPR' },
+          rfidCards: customer.rfidCards || []
+        }))
+        
+        setCustomers(processedCustomers)
         setPagination({
           page: data.data.pagination?.page || 1,
           total: data.data.pagination?.total || 0,

@@ -71,7 +71,14 @@ export default function MerchantsPage() {
       const data = await response.json()
       
       if (data.status === 'success') {
-        setMerchants(data.data.merchants || [])
+        // Process merchants to ensure wallet data is properly handled
+        const processedMerchants = (data.data.merchants || []).map((merchant: any) => ({
+          ...merchant,
+          wallet: merchant.wallet || { balance: 0, currency: 'NPR' },
+          nfcScanners: merchant.nfcScanners || []
+        }))
+        
+        setMerchants(processedMerchants)
         setPagination({
           page: data.data.pagination?.page || 1,
           total: data.data.pagination?.total || 0,
