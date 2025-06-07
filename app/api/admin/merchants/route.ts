@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
 
     // Call your backend API
     const backendResponse = await fetch(
-      `${process.env.BACKEND_URL}/api/admin/merchants?page=${page}&limit=${limit}`, 
+      `${process.env.BACKEND_URL}/api/admin/merchants?page=${page}&limit=${limit}&populate=wallet,nfcScanners`, 
       {
         method: 'GET',
         headers: {

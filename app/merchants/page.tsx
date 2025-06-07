@@ -1,12 +1,14 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
-import { Search, Edit, Trash2, Eye, Store } from "lucide-react"
+import { Skeleton } from "@/components/ui/skeleton"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Search, Edit, Trash2, Eye, Store, RefreshCw, AlertCircle } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -19,80 +21,143 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
-const merchants = [
-  {
-    id: "MERCH001",
-    name: "Coffee Corner",
-    email: "contact@coffeecorner.com",
-    phone: "+1 234 567 9001",
-    address: "123 Main St, City, State 12345",
-    category: "Food & Beverage",
-    status: "active",
-    joinDate: "2024-01-10",
-    nfcScanner: "NFC001",
-    commission: "2.5%",
-  },
-  {
-    id: "MERCH002",
-    name: "Quick Gas Station",
-    email: "info@quickgas.com",
-    phone: "+1 234 567 9002",
-    address: "456 Highway Rd, City, State 12345",
-    category: "Fuel",
-    status: "active",
-    joinDate: "2024-01-15",
-    nfcScanner: "NFC002",
-    commission: "1.8%",
-  },
-  {
-    id: "MERCH003",
-    name: "Bella Restaurant",
-    email: "hello@bellarestaurant.com",
-    phone: "+1 234 567 9003",
-    address: "789 Food Ave, City, State 12345",
-    category: "Restaurant",
-    status: "pending",
-    joinDate: "2024-02-01",
-    nfcScanner: null,
-    commission: "3.0%",
-  },
-  {
-    id: "MERCH004",
-    name: "Fresh Grocery",
-    email: "support@freshgrocery.com",
-    phone: "+1 234 567 9004",
-    address: "321 Market St, City, State 12345",
-    category: "Grocery",
-    status: "active",
-    joinDate: "2024-02-05",
-    nfcScanner: "NFC004",
-    commission: "2.2%",
-  },
-  {
-    id: "MERCH005",
-    name: "City Pharmacy",
-    email: "contact@citypharmacy.com",
-    phone: "+1 234 567 9005",
-    address: "654 Health Blvd, City, State 12345",
-    category: "Healthcare",
-    status: "suspended",
-    joinDate: "2024-02-10",
-    nfcScanner: "NFC005",
-    commission: "2.0%",
-  },
-]
+interface Merchant {
+  _id: string
+  businessName: string
+  ownerName: string
+  email: string
+  phone: string
+  businessAddress: string
+  businessType: string
+  createdAt: string
+  wallet?: {
+    balance: number
+    currency: string
+  }
+  nfcScanners?: Array<{
+    _id: string
+    deviceId: string
+    status: string
+    isActive: boolean
+    model?: string
+  }>
+}
 
 export default function MerchantsPage() {
   const [searchTerm, setSearchTerm] = useState("")
-  const [selectedMerchant, setSelectedMerchant] = useState<(typeof merchants)[0] | null>(null)
+  const [selectedMerchant, setSelectedMerchant] = useState<Merchant | null>(null)
+  const [merchants, setMerchants] = useState<Merchant[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [refreshing, setRefreshing] = useState(false)
+  const [pagination, setPagination] = useState({
+    page: 1,
+    total: 0,
+    pages: 0,
+    limit: 20
+  })
+
+  const fetchMerchants = async (page = 1) => {
+    try {
+      setError(null)
+      if (page === 1) setIsLoading(true)
+      
+      const response = await fetch(`/api/admin/merchants?page=${page}&limit=20`)
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch merchants')
+      }
+      
+      const data = await response.json()
+      
+      if (data.status === 'success') {
+        setMerchants(data.data.merchants || [])
+        setPagination({
+          page: data.data.pagination?.page || 1,
+          total: data.data.pagination?.total || 0,
+          pages: data.data.pagination?.pages || 0,
+          limit: data.data.pagination?.limit || 20
+        })
+      } else {
+        throw new Error(data.message || 'Failed to fetch merchants')
+      }
+    } catch (err) {
+      console.error('Merchants fetch error:', err)
+      setError('Failed to load merchants. Please try again.')
+    } finally {
+      setIsLoading(false)
+      setRefreshing(false)
+    }
+  }
+
+  const handleRefresh = async () => {
+    setRefreshing(true)
+    await fetchMerchants(pagination.page)
+  }
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-NP', {
+      style: 'currency',
+      currency: 'NPR',
+      minimumFractionDigits: 2
+    }).format(amount)
+  }
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    })
+  }
+
+  const getMerchantStatus = (merchant: Merchant) => {
+    // Determine status based on NFC scanners and activity
+    const hasActiveScanner = merchant.nfcScanners?.some(scanner => 
+      scanner.isActive && (scanner.status === 'ONLINE' || scanner.status === 'OFFLINE')
+    )
+    
+    if (hasActiveScanner) return 'active'
+    if (merchant.nfcScanners && merchant.nfcScanners.length > 0) return 'pending'
+    return 'inactive'
+  }
+
+  const getActiveScanners = (merchant: Merchant) => {
+    return merchant.nfcScanners?.filter(scanner => scanner.isActive) || []
+  }
 
   const filteredMerchants = merchants.filter(
     (merchant) =>
-      merchant.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      merchant.businessName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      merchant.ownerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       merchant.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      merchant.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      merchant.category.toLowerCase().includes(searchTerm.toLowerCase()),
+      merchant.businessType.toLowerCase().includes(searchTerm.toLowerCase())
   )
+
+  useEffect(() => {
+    fetchMerchants()
+  }, [])
+
+  if (error && merchants.length === 0) {
+    return (
+      <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription className="flex items-center justify-between">
+            {error}
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={handleRefresh}
+              disabled={refreshing}
+            >
+              {refreshing ? <RefreshCw className="h-4 w-4 animate-spin" /> : "Retry"}
+            </Button>
+          </AlertDescription>
+        </Alert>
+      </div>
+    )
+  }
 
   return (
     <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
@@ -104,12 +169,23 @@ export default function MerchantsPage() {
           </h2>
           <p className="text-muted-foreground">Manage merchant accounts and partnerships</p>
         </div>
+        <Button 
+          variant="outline" 
+          onClick={handleRefresh} 
+          disabled={refreshing}
+          className="flex items-center gap-2"
+        >
+          <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+          Refresh
+        </Button>
       </div>
 
       <Card>
         <CardHeader>
           <CardTitle>Merchant List</CardTitle>
-          <CardDescription>A list of all registered merchants in your system.</CardDescription>
+          <CardDescription>
+            {isLoading ? "Loading merchants..." : `${pagination.total} merchants registered in your system.`}
+          </CardDescription>
           <div className="flex items-center space-x-2">
             <Search className="h-4 w-4 text-muted-foreground" />
             <Input
@@ -117,6 +193,7 @@ export default function MerchantsPage() {
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="max-w-sm"
+              disabled={isLoading}
             />
           </div>
         </CardHeader>
@@ -124,128 +201,142 @@ export default function MerchantsPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Merchant ID</TableHead>
                 <TableHead>Business Name</TableHead>
-                <TableHead>Category</TableHead>
+                <TableHead>Owner</TableHead>
+                <TableHead>Business Type</TableHead>
                 <TableHead>Contact</TableHead>
+                <TableHead>Balance</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>NFC Scanner</TableHead>
-                <TableHead>Commission</TableHead>
+                <TableHead>NFC Scanners</TableHead>
                 <TableHead>Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredMerchants.map((merchant) => (
-                <TableRow key={merchant.id}>
-                  <TableCell className="font-medium">{merchant.id}</TableCell>
-                  <TableCell>{merchant.name}</TableCell>
-                  <TableCell>{merchant.category}</TableCell>
-                  <TableCell>
-                    <div className="space-y-1">
-                      <p className="text-sm">{merchant.email}</p>
-                      <p className="text-xs text-muted-foreground">{merchant.phone}</p>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge
-                      variant={
-                        merchant.status === "active"
-                          ? "default"
-                          : merchant.status === "pending"
-                            ? "secondary"
-                            : "destructive"
-                      }
-                    >
-                      {merchant.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    {merchant.nfcScanner ? (
-                      <Badge variant="outline">{merchant.nfcScanner}</Badge>
-                    ) : (
-                      <span className="text-muted-foreground">Not assigned</span>
-                    )}
-                  </TableCell>
-                  <TableCell>{merchant.commission}</TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <Button variant="ghost" size="sm" onClick={() => setSelectedMerchant(merchant)}>
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                      <Dialog>
-                        <DialogTrigger asChild>
-                          <Button variant="ghost" size="sm">
-                            <Edit className="h-4 w-4" />
+              {isLoading ? (
+                Array.from({ length: 5 }).map((_, index) => (
+                  <TableRow key={index}>
+                    <TableCell><Skeleton className="h-4 w-32" /></TableCell>
+                    <TableCell><Skeleton className="h-4 w-28" /></TableCell>
+                    <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                    <TableCell><Skeleton className="h-4 w-40" /></TableCell>
+                    <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+                    <TableCell><Skeleton className="h-5 w-16" /></TableCell>
+                    <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                    <TableCell><Skeleton className="h-4 w-16" /></TableCell>
+                  </TableRow>
+                ))
+              ) : filteredMerchants.length > 0 ? (
+                filteredMerchants.map((merchant) => {
+                  const status = getMerchantStatus(merchant)
+                  const activeScanners = getActiveScanners(merchant)
+                  
+                  return (
+                    <TableRow key={merchant._id}>
+                      <TableCell className="font-medium">{merchant.businessName}</TableCell>
+                      <TableCell>{merchant.ownerName}</TableCell>
+                      <TableCell>{merchant.businessType}</TableCell>
+                      <TableCell>
+                        <div className="space-y-1">
+                          <p className="text-sm">{merchant.email}</p>
+                          <p className="text-xs text-muted-foreground">{merchant.phone}</p>
+                        </div>
+                      </TableCell>
+                      <TableCell className="font-medium">
+                        {merchant.wallet ? formatCurrency(merchant.wallet.balance) : 'No Wallet'}
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={
+                            status === "active"
+                              ? "default"
+                              : status === "pending"
+                                ? "secondary"
+                                : "outline"
+                          }
+                        >
+                          {status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        {activeScanners.length > 0 ? (
+                          <div className="space-y-1">
+                            {activeScanners.slice(0, 2).map((scanner) => (
+                              <Badge 
+                                key={scanner._id} 
+                                variant="outline" 
+                                className="text-xs font-mono block"
+                              >
+                                {scanner.deviceId}
+                              </Badge>
+                            ))}
+                            {activeScanners.length > 2 && (
+                              <span className="text-xs text-muted-foreground">
+                                +{activeScanners.length - 2} more
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground text-sm">Not assigned</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <Button variant="ghost" size="sm" onClick={() => setSelectedMerchant(merchant)}>
+                            <Eye className="h-4 w-4" />
                           </Button>
-                        </DialogTrigger>
-                        <DialogContent className="max-w-2xl">
-                          <DialogHeader>
-                            <DialogTitle>Edit Merchant</DialogTitle>
-                            <DialogDescription>Update merchant information.</DialogDescription>
-                          </DialogHeader>
-                          <div className="grid gap-4 py-4">
-                            <div className="grid grid-cols-2 gap-4">
-                              <div className="space-y-2">
-                                <Label htmlFor="edit-merchant-name">Business Name</Label>
-                                <Input id="edit-merchant-name" defaultValue={merchant.name} />
+                          <Dialog>
+                            <DialogTrigger asChild>
+                              <Button variant="ghost" size="sm">
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                            </DialogTrigger>
+                            <DialogContent className="max-w-2xl">
+                              <DialogHeader>
+                                <DialogTitle>Edit Merchant</DialogTitle>
+                                <DialogDescription>Update merchant information.</DialogDescription>
+                              </DialogHeader>
+                              <div className="grid gap-4 py-4">
+                                <div className="grid grid-cols-2 gap-4">
+                                  <div className="space-y-2">
+                                    <Label htmlFor="edit-status">Status</Label>
+                                    <Select defaultValue={status}>
+                                      <SelectTrigger>
+                                        <SelectValue />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="active">Active</SelectItem>
+                                        <SelectItem value="pending">Pending</SelectItem>
+                                        <SelectItem value="inactive">Inactive</SelectItem>
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                </div>
+                                <div className="space-y-2">
+                                  <Label htmlFor="edit-address">Business Address</Label>
+                                  <Textarea id="edit-address" defaultValue={merchant.businessAddress} />
+                                </div>
                               </div>
-                              <div className="space-y-2">
-                                <Label htmlFor="edit-merchant-category">Category</Label>
-                                <Input id="edit-merchant-category" defaultValue={merchant.category} />
+                              <div className="flex justify-end gap-2">
+                                <Button variant="outline">Cancel</Button>
+                                <Button className="bg-primary hover:bg-primary/90">Save Changes</Button>
                               </div>
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                              <div className="space-y-2">
-                                <Label htmlFor="edit-merchant-email">Email</Label>
-                                <Input id="edit-merchant-email" type="email" defaultValue={merchant.email} />
-                              </div>
-                              <div className="space-y-2">
-                                <Label htmlFor="edit-merchant-phone">Phone</Label>
-                                <Input id="edit-merchant-phone" defaultValue={merchant.phone} />
-                              </div>
-                            </div>
-                            <div className="space-y-2">
-                              <Label htmlFor="edit-merchant-address">Address</Label>
-                              <Textarea id="edit-merchant-address" defaultValue={merchant.address} />
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                              <div className="space-y-2">
-                                <Label htmlFor="edit-merchant-commission">Commission Rate (%)</Label>
-                                <Input
-                                  id="edit-merchant-commission"
-                                  type="number"
-                                  step="0.1"
-                                  defaultValue={merchant.commission.replace("%", "")}
-                                />
-                              </div>
-                              <div className="space-y-2">
-                                <Label htmlFor="edit-merchant-status">Status</Label>
-                                <Select defaultValue={merchant.status}>
-                                  <SelectTrigger>
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="active">Active</SelectItem>
-                                    <SelectItem value="pending">Pending</SelectItem>
-                                    <SelectItem value="suspended">Suspended</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                            </div>
-                          </div>
-                          <div className="flex justify-end gap-2">
-                            <Button variant="outline">Cancel</Button>
-                            <Button className="bg-primary hover:bg-primary/90">Save Changes</Button>
-                          </div>
-                        </DialogContent>
-                      </Dialog>
-                      <Button variant="ghost" size="sm">
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
+                            </DialogContent>
+                          </Dialog>
+                          <Button variant="ghost" size="sm">
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })
+              ) : (
+                <TableRow>
+                  <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                    {searchTerm ? "No merchants found matching your search." : "No merchants found."}
                   </TableCell>
                 </TableRow>
-              ))}
+              )}
             </TableBody>
           </Table>
         </CardContent>
@@ -263,29 +354,39 @@ export default function MerchantsPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label className="text-sm font-medium">Merchant ID</Label>
-                  <p className="text-sm text-muted-foreground">{selectedMerchant.id}</p>
+                  <p className="text-sm text-muted-foreground">{selectedMerchant._id.slice(-8)}</p>
                 </div>
                 <div>
                   <Label className="text-sm font-medium">Business Name</Label>
-                  <p className="text-sm text-muted-foreground">{selectedMerchant.name}</p>
+                  <p className="text-sm text-muted-foreground">{selectedMerchant.businessName}</p>
                 </div>
                 <div>
-                  <Label className="text-sm font-medium">Category</Label>
-                  <p className="text-sm text-muted-foreground">{selectedMerchant.category}</p>
+                  <Label className="text-sm font-medium">Owner Name</Label>
+                  <p className="text-sm text-muted-foreground">{selectedMerchant.ownerName}</p>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium">Business Type</Label>
+                  <p className="text-sm text-muted-foreground">{selectedMerchant.businessType}</p>
                 </div>
                 <div>
                   <Label className="text-sm font-medium">Status</Label>
                   <Badge
                     variant={
-                      selectedMerchant.status === "active"
+                      getMerchantStatus(selectedMerchant) === "active"
                         ? "default"
-                        : selectedMerchant.status === "pending"
+                        : getMerchantStatus(selectedMerchant) === "pending"
                           ? "secondary"
-                          : "destructive"
+                          : "outline"
                     }
                   >
-                    {selectedMerchant.status}
+                    {getMerchantStatus(selectedMerchant)}
                   </Badge>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium">Wallet Balance</Label>
+                  <p className="text-sm text-muted-foreground">
+                    {selectedMerchant.wallet ? formatCurrency(selectedMerchant.wallet.balance) : 'No Wallet'}
+                  </p>
                 </div>
                 <div>
                   <Label className="text-sm font-medium">Email</Label>
@@ -296,20 +397,51 @@ export default function MerchantsPage() {
                   <p className="text-sm text-muted-foreground">{selectedMerchant.phone}</p>
                 </div>
                 <div className="col-span-2">
-                  <Label className="text-sm font-medium">Address</Label>
-                  <p className="text-sm text-muted-foreground">{selectedMerchant.address}</p>
+                  <Label className="text-sm font-medium">Business Address</Label>
+                  <p className="text-sm text-muted-foreground">{selectedMerchant.businessAddress}</p>
                 </div>
                 <div>
                   <Label className="text-sm font-medium">Join Date</Label>
-                  <p className="text-sm text-muted-foreground">{selectedMerchant.joinDate}</p>
+                  <p className="text-sm text-muted-foreground">{formatDate(selectedMerchant.createdAt)}</p>
                 </div>
                 <div>
-                  <Label className="text-sm font-medium">Commission Rate</Label>
-                  <p className="text-sm text-muted-foreground">{selectedMerchant.commission}</p>
+                  <Label className="text-sm font-medium">Total Scanners</Label>
+                  <p className="text-sm text-muted-foreground">
+                    {selectedMerchant.nfcScanners?.length || 0} devices
+                  </p>
                 </div>
-                <div>
-                  <Label className="text-sm font-medium">NFC Scanner</Label>
-                  <p className="text-sm text-muted-foreground">{selectedMerchant.nfcScanner || "Not assigned"}</p>
+                <div className="col-span-2">
+                  <Label className="text-sm font-medium">NFC Scanners</Label>
+                  <div className="space-y-2 mt-1">
+                    {selectedMerchant.nfcScanners && selectedMerchant.nfcScanners.length > 0 ? (
+                      selectedMerchant.nfcScanners.map((scanner) => (
+                        <div key={scanner._id} className="flex items-center justify-between p-2 border rounded">
+                          <div>
+                            <span className="text-sm font-mono">{scanner.deviceId}</span>
+                            {scanner.model && (
+                              <span className="text-xs text-muted-foreground ml-2">({scanner.model})</span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Badge 
+                              variant={scanner.status === 'ONLINE' ? "default" : "secondary"}
+                              className="text-xs"
+                            >
+                              {scanner.status}
+                            </Badge>
+                            <Badge 
+                              variant={scanner.isActive ? "default" : "outline"}
+                              className="text-xs"
+                            >
+                              {scanner.isActive ? "Active" : "Inactive"}
+                            </Badge>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No NFC scanners assigned</p>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
