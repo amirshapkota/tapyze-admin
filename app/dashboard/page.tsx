@@ -1,71 +1,258 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Users, Store, CreditCard, Scan, TrendingUp, DollarSign } from "lucide-react"
+import { Skeleton } from "@/components/ui/skeleton"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Users, Store, CreditCard, Scan, TrendingUp, DollarSign, AlertCircle, RefreshCw } from "lucide-react"
+import { Button } from "@/components/ui/button"
 
-const stats = [
-  {
-    title: "Total Customers",
-    value: "2,847",
-    change: "+12%",
-    icon: Users,
-    color: "text-blue-600",
-  },
-  {
-    title: "Active Merchants",
-    value: "156",
-    change: "+8%",
-    icon: Store,
-    color: "text-green-600",
-  },
-  {
-    title: "RFID Cards",
-    value: "3,241",
-    change: "+15%",
-    icon: CreditCard,
-    color: "text-purple-600",
-  },
-  {
-    title: "NFC Scanners",
-    value: "89",
-    change: "+5%",
-    icon: Scan,
-    color: "text-orange-600",
-  },
-]
+interface DashboardStats {
+  totalCustomers: number
+  activeMerchants: number
+  rfidCards: number
+  nfcScanners: number
+  customerGrowth?: string
+  merchantGrowth?: string
+  cardGrowth?: string
+  scannerGrowth?: string
+}
 
-const recentTransactions = [
-  { id: "TXN001", customer: "John Doe", merchant: "Coffee Shop", amount: "$12.50", status: "completed" },
-  { id: "TXN002", customer: "Jane Smith", merchant: "Gas Station", amount: "$45.00", status: "completed" },
-  { id: "TXN003", customer: "Mike Johnson", merchant: "Restaurant", amount: "$28.75", status: "pending" },
-  { id: "TXN004", customer: "Sarah Wilson", merchant: "Grocery Store", amount: "$67.20", status: "completed" },
-  { id: "TXN005", customer: "Tom Brown", merchant: "Pharmacy", amount: "$15.30", status: "failed" },
-]
+interface Transaction {
+  _id: string
+  amount: number
+  type: 'CREDIT' | 'DEBIT' | 'TRANSFER'
+  description: string
+  status: 'PENDING' | 'COMPLETED' | 'FAILED'
+  createdAt: string
+  metadata?: {
+    customer?: { id: string }
+    merchant?: { id: string }
+    paymentType?: string
+  }
+}
+
+interface TransactionVolume {
+  totalVolume: number
+  dailyTransactions: number[]
+}
 
 export default function DashboardPage() {
+  const [stats, setStats] = useState<DashboardStats | null>(null)
+  const [recentTransactions, setRecentTransactions] = useState<Transaction[]>([])
+  const [transactionVolume, setTransactionVolume] = useState<TransactionVolume | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [refreshing, setRefreshing] = useState(false)
+
+  const fetchDashboardData = async () => {
+    try {
+      setError(null)
+      
+      // Fetch all data in parallel
+      const [
+        customersResponse,
+        merchantsResponse,
+        transactionsResponse
+      ] = await Promise.all([
+        fetch('/api/admin/customers'),
+        fetch('/api/admin/merchants'),
+        fetch('/api/admin/transactions?limit=5&page=1')
+      ])
+
+      // Check if all requests were successful
+      if (!customersResponse.ok || !merchantsResponse.ok || !transactionsResponse.ok) {
+        throw new Error('Failed to fetch dashboard data')
+      }
+
+      const [customersData, merchantsData, transactionsData] = await Promise.all([
+        customersResponse.json(),
+        merchantsResponse.json(),
+        transactionsResponse.json()
+      ])
+
+      // Process stats
+      const dashboardStats: DashboardStats = {
+        totalCustomers: customersData.results || 0,
+        activeMerchants: merchantsData.results || 0,
+        rfidCards: 0, // You'll need to add RFID cards endpoint
+        nfcScanners: 0, // You'll need to add NFC scanners endpoint
+        customerGrowth: "+12%", // Calculate from historical data
+        merchantGrowth: "+8%", // Calculate from historical data
+        cardGrowth: "+15%", // Calculate from historical data
+        scannerGrowth: "+5%" // Calculate from historical data
+      }
+
+      // Calculate transaction volume
+      const transactions = transactionsData.data?.transactions || []
+      const totalVolume = transactions.reduce((sum: number, txn: Transaction) => {
+        return sum + Math.abs(txn.amount)
+      }, 0)
+
+      // Generate mock daily data for the chart (replace with real aggregated data)
+      const dailyData = Array.from({ length: 30 }, () => Math.random() * 50000 + 10000)
+
+      setStats(dashboardStats)
+      setRecentTransactions(transactions.slice(0, 5))
+      setTransactionVolume({
+        totalVolume,
+        dailyTransactions: dailyData
+      })
+
+    } catch (err) {
+      console.error('Dashboard fetch error:', err)
+      setError('Failed to load dashboard data. Please try again.')
+    } finally {
+      setIsLoading(false)
+      setRefreshing(false)
+    }
+  }
+
+  const handleRefresh = async () => {
+    setRefreshing(true)
+    await fetchDashboardData()
+  }
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD'
+    }).format(amount)
+  }
+
+  const formatTransactionAmount = (transaction: Transaction) => {
+    const amount = Math.abs(transaction.amount)
+    return formatCurrency(amount)
+  }
+
+  const getTransactionStatus = (status: string) => {
+    switch (status) {
+      case 'COMPLETED':
+        return 'default'
+      case 'PENDING':
+        return 'secondary'
+      case 'FAILED':
+        return 'destructive'
+      default:
+        return 'secondary'
+    }
+  }
+
+  const getCustomerName = (transaction: Transaction) => {
+    // This would ideally come from populated customer data
+    return transaction.metadata?.customer?.id ? 
+      `Customer ${transaction.metadata.customer.id.slice(-4)}` : 
+      'Unknown Customer'
+  }
+
+  const getMerchantName = (transaction: Transaction) => {
+    // This would ideally come from populated merchant data
+    return transaction.metadata?.merchant?.id ? 
+      `Merchant ${transaction.metadata.merchant.id.slice(-4)}` : 
+      transaction.description
+  }
+
+  useEffect(() => {
+    fetchDashboardData()
+  }, [])
+
+  if (error) {
+    return (
+      <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription className="flex items-center justify-between">
+            {error}
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={handleRefresh}
+              disabled={refreshing}
+            >
+              {refreshing ? <RefreshCw className="h-4 w-4 animate-spin" /> : "Retry"}
+            </Button>
+          </AlertDescription>
+        </Alert>
+      </div>
+    )
+  }
+
   return (
     <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
       <div className="flex items-center justify-between space-y-2">
         <h2 className="text-3xl font-bold tracking-tight">Dashboard</h2>
+        <Button 
+          variant="outline" 
+          onClick={handleRefresh} 
+          disabled={refreshing}
+          className="flex items-center gap-2"
+        >
+          <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+          Refresh
+        </Button>
       </div>
 
       {/* Stats Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {stats.map((stat) => (
-          <Card key={stat.title}>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">{stat.title}</CardTitle>
-              <stat.icon className={`h-4 w-4 ${stat.color}`} />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stat.value}</div>
-              <p className="text-xs text-muted-foreground">
-                <span className="text-green-600">{stat.change}</span> from last month
-              </p>
-            </CardContent>
-          </Card>
-        ))}
+        {isLoading ? (
+          Array.from({ length: 4 }).map((_, i) => (
+            <Card key={i}>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <Skeleton className="h-4 w-24" />
+                <Skeleton className="h-4 w-4" />
+              </CardHeader>
+              <CardContent>
+                <Skeleton className="h-8 w-16 mb-2" />
+                <Skeleton className="h-3 w-20" />
+              </CardContent>
+            </Card>
+          ))
+        ) : (
+          [
+            {
+              title: "Total Customers",
+              value: stats?.totalCustomers.toLocaleString() || "0",
+              change: stats?.customerGrowth || "+0%",
+              icon: Users,
+              color: "text-blue-600",
+            },
+            {
+              title: "Active Merchants",
+              value: stats?.activeMerchants.toLocaleString() || "0",
+              change: stats?.merchantGrowth || "+0%",
+              icon: Store,
+              color: "text-green-600",
+            },
+            {
+              title: "RFID Cards",
+              value: stats?.rfidCards.toLocaleString() || "0",
+              change: stats?.cardGrowth || "+0%",
+              icon: CreditCard,
+              color: "text-purple-600",
+            },
+            {
+              title: "NFC Scanners",
+              value: stats?.nfcScanners.toLocaleString() || "0",
+              change: stats?.scannerGrowth || "+0%",
+              icon: Scan,
+              color: "text-orange-600",
+            },
+          ].map((stat) => (
+            <Card key={stat.title}>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">{stat.title}</CardTitle>
+                <stat.icon className={`h-4 w-4 ${stat.color}`} />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{stat.value}</div>
+                <p className="text-xs text-muted-foreground">
+                  <span className="text-green-600">{stat.change}</span> from last month
+                </p>
+              </CardContent>
+            </Card>
+          ))
+        )}
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
@@ -76,24 +263,39 @@ export default function DashboardPage() {
               <TrendingUp className="h-5 w-5 text-primary" />
               Transaction Volume
             </CardTitle>
-            <div className="text-2xl font-bold text-primary">$2,847,392.50</div>
+            {isLoading ? (
+              <Skeleton className="h-8 w-48" />
+            ) : (
+              <div className="text-2xl font-bold text-primary">
+                {formatCurrency(transactionVolume?.totalVolume || 0)}
+              </div>
+            )}
             <CardDescription>
-              Total volume this month: $2,847,392.50 | Daily breakdown for the last 30 days
+              {isLoading ? (
+                <Skeleton className="h-4 w-64" />
+              ) : (
+                `Total volume this month: ${formatCurrency(transactionVolume?.totalVolume || 0)} | Daily breakdown for the last 30 days`
+              )}
             </CardDescription>
           </CardHeader>
           <CardContent className="pl-2">
-            <div className="h-[200px] flex items-end justify-between gap-2">
-              {Array.from({ length: 30 }, (_, i) => (
-                <div
-                  key={i}
-                  className="bg-primary/20 hover:bg-primary/40 transition-colors rounded-t"
-                  style={{
-                    height: `${Math.random() * 160 + 40}px`,
-                    width: "100%",
-                  }}
-                />
-              ))}
-            </div>
+            {isLoading ? (
+              <Skeleton className="h-[200px] w-full" />
+            ) : (
+              <div className="h-[200px] flex items-end justify-between gap-2">
+                {transactionVolume?.dailyTransactions.map((amount, i) => (
+                  <div
+                    key={i}
+                    className="bg-primary/20 hover:bg-primary/40 transition-colors rounded-t cursor-pointer"
+                    style={{
+                      height: `${(amount / Math.max(...(transactionVolume?.dailyTransactions || []))) * 160 + 40}px`,
+                      width: "100%",
+                    }}
+                    title={formatCurrency(amount)}
+                  />
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -107,31 +309,52 @@ export default function DashboardPage() {
             <CardDescription>Latest transactions in the system</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              {recentTransactions.map((transaction) => (
-                <div key={transaction.id} className="flex items-center justify-between">
-                  <div className="space-y-1">
-                    <p className="text-sm font-medium leading-none">{transaction.customer}</p>
-                    <p className="text-sm text-muted-foreground">{transaction.merchant}</p>
+            {isLoading ? (
+              <div className="space-y-4">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <div key={i} className="flex items-center justify-between">
+                    <div className="space-y-1">
+                      <Skeleton className="h-4 w-24" />
+                      <Skeleton className="h-3 w-32" />
+                    </div>
+                    <div className="text-right space-y-1">
+                      <Skeleton className="h-4 w-16" />
+                      <Skeleton className="h-5 w-20" />
+                    </div>
                   </div>
-                  <div className="text-right space-y-1">
-                    <p className="text-sm font-medium">{transaction.amount}</p>
-                    <Badge
-                      variant={
-                        transaction.status === "completed"
-                          ? "default"
-                          : transaction.status === "pending"
-                            ? "secondary"
-                            : "destructive"
-                      }
-                      className="text-xs"
-                    >
-                      {transaction.status}
-                    </Badge>
+                ))}
+              </div>
+            ) : recentTransactions.length > 0 ? (
+              <div className="space-y-4">
+                {recentTransactions.map((transaction) => (
+                  <div key={transaction._id} className="flex items-center justify-between">
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium leading-none">
+                        {getCustomerName(transaction)}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        {getMerchantName(transaction)}
+                      </p>
+                    </div>
+                    <div className="text-right space-y-1">
+                      <p className="text-sm font-medium">
+                        {formatTransactionAmount(transaction)}
+                      </p>
+                      <Badge
+                        variant={getTransactionStatus(transaction.status) as any}
+                        className="text-xs"
+                      >
+                        {transaction.status.toLowerCase()}
+                      </Badge>
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                No recent transactions found
+              </p>
+            )}
           </CardContent>
         </Card>
       </div>
