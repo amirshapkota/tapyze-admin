@@ -30,6 +30,10 @@ interface Transaction {
     customer?: { id: string }
     merchant?: { id: string }
     paymentType?: string
+    transferType?: 'INCOMING' | 'OUTGOING'
+    method?: string
+    initiatedBy?: string
+    [key: string]: any // Allow for additional metadata properties
   }
 }
 
