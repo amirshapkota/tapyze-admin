@@ -54,21 +54,34 @@ export default function DashboardPage() {
       const [
         customersResponse,
         merchantsResponse,
+        rfidCardsResponse,
+        nfcScannersResponse,
         transactionsResponse
       ] = await Promise.all([
         fetch('/api/admin/customers'),
         fetch('/api/admin/merchants'),
-        fetch('/api/admin/transactions?limit=5&page=1')
+        fetch('/api/admin/rfid-cards?isActive=true'),
+        fetch('/api/admin/nfc-scanners?isActive=true'),
+        fetch('/api/admin/transactions?limit=10&page=1')
       ])
 
       // Check if all requests were successful
-      if (!customersResponse.ok || !merchantsResponse.ok || !transactionsResponse.ok) {
+      if (!customersResponse.ok || !merchantsResponse.ok || !rfidCardsResponse.ok || 
+          !nfcScannersResponse.ok || !transactionsResponse.ok) {
         throw new Error('Failed to fetch dashboard data')
       }
 
-      const [customersData, merchantsData, transactionsData] = await Promise.all([
+      const [
+        customersData, 
+        merchantsData, 
+        rfidCardsData, 
+        nfcScannersData, 
+        transactionsData
+      ] = await Promise.all([
         customersResponse.json(),
         merchantsResponse.json(),
+        rfidCardsResponse.json(),
+        nfcScannersResponse.json(),
         transactionsResponse.json()
       ])
 
@@ -76,12 +89,12 @@ export default function DashboardPage() {
       const dashboardStats: DashboardStats = {
         totalCustomers: customersData.results || 0,
         activeMerchants: merchantsData.results || 0,
-        rfidCards: 0, // You'll need to add RFID cards endpoint
-        nfcScanners: 0, // You'll need to add NFC scanners endpoint
+        rfidCards: rfidCardsData.results || 0,
+        nfcScanners: nfcScannersData.results || 0,
         customerGrowth: "+12%", // Calculate from historical data
-        merchantGrowth: "+8%", // Calculate from historical data
-        cardGrowth: "+15%", // Calculate from historical data
-        scannerGrowth: "+5%" // Calculate from historical data
+        merchantGrowth: "+8%",  // Calculate from historical data
+        cardGrowth: "+15%",     // Calculate from historical data
+        scannerGrowth: "+5%"    // Calculate from historical data
       }
 
       // Calculate transaction volume
@@ -115,9 +128,10 @@ export default function DashboardPage() {
   }
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
+    return new Intl.NumberFormat('en-NP', {
       style: 'currency',
-      currency: 'USD'
+      currency: 'NPR',
+      minimumFractionDigits: 2
     }).format(amount)
   }
 
@@ -354,6 +368,80 @@ export default function DashboardPage() {
               <p className="text-sm text-muted-foreground text-center py-4">
                 No recent transactions found
               </p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Additional Statistics Cards */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        {/* System Health */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">System Health</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {isLoading ? (
+              <div className="space-y-2">
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-4 w-3/4" />
+                <Skeleton className="h-4 w-1/2" />
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm">Active Cards</span>
+                  <span className="text-sm font-medium">{stats?.rfidCards || 0}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm">Online Scanners</span>
+                  <span className="text-sm font-medium">{stats?.nfcScanners || 0}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm">System Status</span>
+                  <Badge variant="default" className="text-xs">Operational</Badge>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Quick Actions */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Quick Actions</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <Button variant="outline" size="sm" className="w-full justify-start">
+              Add New Customer
+            </Button>
+            <Button variant="outline" size="sm" className="w-full justify-start">
+              Register Merchant
+            </Button>
+            <Button variant="outline" size="sm" className="w-full justify-start">
+              Issue RFID Card
+            </Button>
+          </CardContent>
+        </Card>
+
+        {/* Recent Activity */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Recent Activity</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {isLoading ? (
+              <div className="space-y-2">
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-4 w-3/4" />
+                <Skeleton className="h-4 w-1/2" />
+              </div>
+            ) : (
+              <div className="space-y-2 text-sm">
+                <p className="text-muted-foreground">New customer registered</p>
+                <p className="text-muted-foreground">RFID card issued</p>
+                <p className="text-muted-foreground">Scanner went online</p>
+              </div>
             )}
           </CardContent>
         </Card>
