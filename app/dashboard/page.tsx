@@ -154,17 +154,37 @@ export default function DashboardPage() {
   }
 
   const getCustomerName = (transaction: Transaction) => {
-    // This would ideally come from populated customer data
-    return transaction.metadata?.customer?.id ? 
-      `Customer ${transaction.metadata.customer.id.slice(-4)}` : 
-      'Unknown Customer'
+    // Extract customer info from transaction description or metadata
+    if (transaction.metadata?.paymentType === 'RFID_TAP' && transaction.metadata?.customer?.id) {
+      return `Customer ${transaction.metadata.customer.id.slice(-4)}`
+    }
+    
+    // For wallet transactions, use the transaction description
+    if (transaction.description.includes('transfer') || transaction.description.includes('Transfer')) {
+      return transaction.type === 'CREDIT' ? 'Incoming Transfer' : 'Outgoing Transfer'
+    }
+    
+    if (transaction.description.includes('top-up') || transaction.description.includes('Top-up')) {
+      return 'Wallet Top-up'
+    }
+    
+    // Default to transaction description
+    return transaction.description
   }
 
   const getMerchantName = (transaction: Transaction) => {
-    // This would ideally come from populated merchant data
-    return transaction.metadata?.merchant?.id ? 
-      `Merchant ${transaction.metadata.merchant.id.slice(-4)}` : 
-      transaction.description
+    // Extract merchant info from transaction metadata
+    if (transaction.metadata?.paymentType === 'RFID_TAP' && transaction.metadata?.merchant?.id) {
+      return `Merchant ${transaction.metadata.merchant.id.slice(-4)}`
+    }
+    
+    // For transfer transactions
+    if (transaction.metadata?.transferType) {
+      return transaction.metadata.transferType === 'INCOMING' ? 'From Transfer' : 'To Transfer'
+    }
+    
+    // Default to transaction type and description
+    return `${transaction.type} Transaction`
   }
 
   useEffect(() => {
@@ -374,7 +394,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Additional Statistics Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2">
         {/* System Health */}
         <Card>
           <CardHeader>
@@ -403,24 +423,6 @@ export default function DashboardPage() {
                 </div>
               </div>
             )}
-          </CardContent>
-        </Card>
-
-        {/* Quick Actions */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Quick Actions</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <Button variant="outline" size="sm" className="w-full justify-start">
-              Add New Customer
-            </Button>
-            <Button variant="outline" size="sm" className="w-full justify-start">
-              Register Merchant
-            </Button>
-            <Button variant="outline" size="sm" className="w-full justify-start">
-              Issue RFID Card
-            </Button>
           </CardContent>
         </Card>
 
