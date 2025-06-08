@@ -39,6 +39,12 @@ interface Customer {
   _id: string
   fullName: string
   email: string
+  rfidCards?: Array<{
+    _id: string
+    cardUid: string
+    status: string
+    isActive: boolean
+  }>
 }
 
 export default function RfidCardsPage() {
@@ -113,7 +119,7 @@ export default function RfidCardsPage() {
           const customersWithoutActiveCards = allCustomers.filter((customer: Customer) => {
             return !customer.rfidCards || 
                    customer.rfidCards.length === 0 || 
-                   !customer.rfidCards.some(card => card.isActive && card.status === 'ACTIVE')
+                   !customer.rfidCards.some((card: any) => card.isActive && card.status === 'ACTIVE')
           })
           setCustomersWithoutCards(customersWithoutActiveCards)
         }
