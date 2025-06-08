@@ -56,6 +56,17 @@ export default function RfidCardsPage() {
     limit: 20
   })
 
+  // Create card form state
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
+  const [createFormData, setCreateFormData] = useState({
+    cardUid: "",
+    pin: "",
+    expiryDate: "",
+    customerId: "unassigned"
+  })
+  const [createLoading, setCreateLoading] = useState(false)
+  const [createError, setCreateError] = useState("")
+
   const fetchCards = async (page = 1) => {
     try {
       setError(null)
@@ -115,6 +126,68 @@ export default function RfidCardsPage() {
   const handleRefresh = async () => {
     setRefreshing(true)
     await Promise.all([fetchCards(pagination.page), fetchCustomers()])
+  }
+
+  const handleCreateCard = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setCreateError("")
+    
+    if (!createFormData.cardUid) {
+      setCreateError("Card UID is required")
+      return
+    }
+    
+    if (!createFormData.pin || !/^\d{4,6}$/.test(createFormData.pin)) {
+      setCreateError("PIN must be 4-6 digits")
+      return
+    }
+    
+    if (!createFormData.expiryDate) {
+      setCreateError("Expiry date is required")
+      return
+    }
+    
+    setCreateLoading(true)
+    
+    try {
+      const payload: any = {
+        cardUid: createFormData.cardUid,
+        pin: createFormData.pin,
+        expiryDate: createFormData.expiryDate
+      }
+      
+      // If a customer is selected, include it in the payload
+      if (createFormData.customerId !== "unassigned") {
+        payload.customerId = createFormData.customerId
+      }
+      
+      const response = await fetch('/api/admin/rfid-cards/create', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      })
+      
+      const data = await response.json()
+      
+      if (response.ok) {
+        setIsCreateDialogOpen(false)
+        setCreateFormData({
+          cardUid: "",
+          pin: "",
+          expiryDate: "",
+          customerId: "unassigned"
+        })
+        await Promise.all([fetchCards(1), fetchCustomers()]) // Refresh both lists
+      } else {
+        setCreateError(data.message || 'Failed to create RFID card')
+      }
+    } catch (error) {
+      setCreateError('An error occurred while creating the RFID card')
+    } finally {
+      setCreateLoading(false)
+    }
   }
 
   const formatDate = (dateString: string) => {
@@ -200,7 +273,7 @@ export default function RfidCardsPage() {
             <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
             Refresh
           </Button>
-          <Dialog>
+          <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
             <DialogTrigger asChild>
               <Button className="bg-primary hover:bg-primary/90 shadow-sm">
                 <Plus className="mr-2 h-4 w-4" />
@@ -212,51 +285,100 @@ export default function RfidCardsPage() {
                 <DialogTitle>Add New RFID Card</DialogTitle>
                 <DialogDescription>Register a new RFID card and assign to customer.</DialogDescription>
               </DialogHeader>
-              <div className="grid gap-4 py-4">
-                <div className="space-y-2">
-                  <Label htmlFor="card-uid">Card UID</Label>
-                  <Input id="card-uid" placeholder="04:XX:XX:XX:XX:XX:XX" />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="pin">PIN (4-6 digits)</Label>
-                  <Input id="pin" type="password" placeholder="Enter 4-6 digit PIN" maxLength={6} />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="expiry-date">Expiry Date</Label>
-                  <Input id="expiry-date" type="date" />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="assign-customer">Assign to Customer</Label>
-                  <Select>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select customer without active card" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="unassigned">Leave Unassigned</SelectItem>
-                      {customersWithoutCards.length > 0 ? (
-                        customersWithoutCards.map((customer) => (
-                          <SelectItem key={customer._id} value={customer._id}>
-                            {customer.fullName} - {customer.email}
-                          </SelectItem>
-                        ))
-                      ) : (
-                        <SelectItem value="no-customers" disabled>
-                          All customers already have active cards
-                        </SelectItem>
-                      )}
-                    </SelectContent>
-                  </Select>
-                  {customersWithoutCards.length === 0 && (
-                    <p className="text-xs text-muted-foreground">
-                      All customers currently have active RFID cards assigned.
-                    </p>
+              <form onSubmit={handleCreateCard}>
+                <div className="grid gap-4 py-4">
+                  {createError && (
+                    <Alert variant="destructive">
+                      <AlertCircle className="h-4 w-4" />
+                      <AlertDescription>{createError}</AlertDescription>
+                    </Alert>
                   )}
+                  <div className="space-y-2">
+                    <Label htmlFor="card-uid">Card UID</Label>
+                    <Input 
+                      id="card-uid" 
+                      placeholder="04:XX:XX:XX:XX:XX:XX"
+                      value={createFormData.cardUid}
+                      onChange={(e) => setCreateFormData(prev => ({ ...prev, cardUid: e.target.value }))}
+                      required
+                      disabled={createLoading}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="pin">PIN (4-6 digits)</Label>
+                    <Input 
+                      id="pin" 
+                      type="password" 
+                      placeholder="Enter 4-6 digit PIN" 
+                      maxLength={6}
+                      value={createFormData.pin}
+                      onChange={(e) => setCreateFormData(prev => ({ ...prev, pin: e.target.value.replace(/\D/g, '') }))}
+                      required
+                      disabled={createLoading}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="expiry-date">Expiry Date</Label>
+                    <Input 
+                      id="expiry-date" 
+                      type="date"
+                      value={createFormData.expiryDate}
+                      onChange={(e) => setCreateFormData(prev => ({ ...prev, expiryDate: e.target.value }))}
+                      required
+                      disabled={createLoading}
+                      min={new Date().toISOString().split('T')[0]} // Prevent past dates
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="assign-customer">Assign to Customer</Label>
+                    <Select 
+                      value={createFormData.customerId} 
+                      onValueChange={(value) => setCreateFormData(prev => ({ ...prev, customerId: value }))}
+                      disabled={createLoading}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select customer without active card" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="unassigned">Leave Unassigned</SelectItem>
+                        {customersWithoutCards.length > 0 ? (
+                          customersWithoutCards.map((customer) => (
+                            <SelectItem key={customer._id} value={customer._id}>
+                              {customer.fullName} - {customer.email}
+                            </SelectItem>
+                          ))
+                        ) : (
+                          <SelectItem value="no-customers" disabled>
+                            All customers already have active cards
+                          </SelectItem>
+                        )}
+                      </SelectContent>
+                    </Select>
+                    {customersWithoutCards.length === 0 && (
+                      <p className="text-xs text-muted-foreground">
+                        All customers currently have active RFID cards assigned.
+                      </p>
+                    )}
+                  </div>
                 </div>
-              </div>
-              <div className="flex justify-end gap-3">
-                <Button variant="outline">Cancel</Button>
-                <Button className="bg-primary hover:bg-primary/90">Create Card</Button>
-              </div>
+                <div className="flex justify-end gap-3">
+                  <Button 
+                    type="button" 
+                    variant="outline"
+                    onClick={() => setIsCreateDialogOpen(false)}
+                    disabled={createLoading}
+                  >
+                    Cancel
+                  </Button>
+                  <Button 
+                    type="submit" 
+                    className="bg-primary hover:bg-primary/90"
+                    disabled={createLoading}
+                  >
+                    {createLoading ? "Creating..." : "Create Card"}
+                  </Button>
+                </div>
+              </form>
             </DialogContent>
           </Dialog>
         </div>
