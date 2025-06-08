@@ -45,6 +45,7 @@ export default function RfidCardsPage() {
   const [searchTerm, setSearchTerm] = useState("")
   const [cards, setCards] = useState<RfidCard[]>([])
   const [customers, setCustomers] = useState<Customer[]>([])
+  const [customersWithoutCards, setCustomersWithoutCards] = useState<Customer[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
@@ -94,7 +95,16 @@ export default function RfidCardsPage() {
       if (response.ok) {
         const data = await response.json()
         if (data.status === 'success') {
-          setCustomers(data.data.customers || [])
+          const allCustomers = data.data.customers || []
+          setCustomers(allCustomers)
+          
+          // Filter customers who don't have any active RFID cards
+          const customersWithoutActiveCards = allCustomers.filter((customer: Customer) => {
+            return !customer.rfidCards || 
+                   customer.rfidCards.length === 0 || 
+                   !customer.rfidCards.some(card => card.isActive && card.status === 'ACTIVE')
+          })
+          setCustomersWithoutCards(customersWithoutActiveCards)
         }
       }
     } catch (err) {
@@ -216,20 +226,31 @@ export default function RfidCardsPage() {
                   <Input id="expiry-date" type="date" />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="assign-customer">Assign to Customer (Optional)</Label>
+                  <Label htmlFor="assign-customer">Assign to Customer</Label>
                   <Select>
                     <SelectTrigger>
-                      <SelectValue placeholder="Select customer or leave unassigned" />
+                      <SelectValue placeholder="Select customer without active card" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="unassigned">Leave Unassigned</SelectItem>
-                      {customers.map((customer) => (
-                        <SelectItem key={customer._id} value={customer._id}>
-                          {customer.fullName} - {customer.email}
+                      {customersWithoutCards.length > 0 ? (
+                        customersWithoutCards.map((customer) => (
+                          <SelectItem key={customer._id} value={customer._id}>
+                            {customer.fullName} - {customer.email}
+                          </SelectItem>
+                        ))
+                      ) : (
+                        <SelectItem value="no-customers" disabled>
+                          All customers already have active cards
                         </SelectItem>
-                      ))}
+                      )}
                     </SelectContent>
                   </Select>
+                  {customersWithoutCards.length === 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      All customers currently have active RFID cards assigned.
+                    </p>
+                  )}
                 </div>
               </div>
               <div className="flex justify-end gap-3">
@@ -440,7 +461,7 @@ export default function RfidCardsPage() {
       </Card>
 
       {/* Quick Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         <Card>
           <CardContent className="p-4">
             <div className="text-2xl font-bold text-green-600">
@@ -455,6 +476,14 @@ export default function RfidCardsPage() {
               {cards.filter(card => !card.owner).length}
             </div>
             <p className="text-sm text-muted-foreground">Unassigned Cards</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="text-2xl font-bold text-blue-600">
+              {customersWithoutCards.length}
+            </div>
+            <p className="text-sm text-muted-foreground">Customers Without Cards</p>
           </CardContent>
         </Card>
         <Card>
