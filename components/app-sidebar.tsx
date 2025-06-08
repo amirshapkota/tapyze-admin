@@ -91,14 +91,13 @@ export function AppSidebar() {
     <>
       <Sidebar className="border-r border-sidebar-border">
         <SidebarHeader className="border-b border-sidebar-border">
-          <div className="flex items-center gap-2 px-4 py-2">
-            <div className="p-2 bg-primary rounded-lg">
-              <Wallet className="h-6 w-6 text-white" />
-            </div>
-            <div>
-              <h2 className="text-lg font-bold text-sidebar-foreground">Tapyze</h2>
-              <p className="text-xs text-sidebar-foreground/70">Admin Panel</p>
-            </div>
+          <div className="px-4 py-4 space-y-3">
+            <img
+              src="/logo-hor.png"
+              alt="Tapyze Logo"
+              className="h-16 w-full object-contain"
+            />
+            <p className="text-xs text-sidebar-foreground/70 text-center">Admin Panel</p>
           </div>
         </SidebarHeader>
 
