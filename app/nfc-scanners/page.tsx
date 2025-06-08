@@ -40,12 +40,19 @@ interface Merchant {
   _id: string
   businessName: string
   ownerName: string
+  nfcScanners?: Array<{
+    _id: string
+    deviceId: string
+    status: string
+    isActive: boolean
+  }>
 }
 
 export default function NfcScannersPage() {
   const [searchTerm, setSearchTerm] = useState("")
   const [scanners, setScanners] = useState<NfcScanner[]>([])
   const [merchants, setMerchants] = useState<Merchant[]>([])
+  const [merchantsWithoutScanners, setMerchantsWithoutScanners] = useState<Merchant[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
@@ -55,6 +62,17 @@ export default function NfcScannersPage() {
     pages: 0,
     limit: 20
   })
+
+  // Create scanner form state
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
+  const [createFormData, setCreateFormData] = useState({
+    deviceId: "",
+    model: "",
+    firmwareVersion: "",
+    merchantId: "unassigned"
+  })
+  const [createLoading, setCreateLoading] = useState(false)
+  const [createError, setCreateError] = useState("")
 
   const fetchScanners = async (page = 1) => {
     try {
@@ -95,7 +113,17 @@ export default function NfcScannersPage() {
       if (response.ok) {
         const data = await response.json()
         if (data.status === 'success') {
-          setMerchants(data.data.merchants || [])
+          const allMerchants = data.data.merchants || []
+          setMerchants(allMerchants)
+          
+          // Filter merchants who don't have any active NFC scanners
+          const merchantsWithoutActiveScanners = allMerchants.filter((merchant: Merchant) => {
+            return !merchant.nfcScanners || 
+                   merchant.nfcScanners.length === 0 || 
+                   !merchant.nfcScanners.some((scanner: any) => scanner.isActive && 
+                     (scanner.status === 'ONLINE' || scanner.status === 'OFFLINE'))
+          })
+          setMerchantsWithoutScanners(merchantsWithoutActiveScanners)
         }
       }
     } catch (err) {
@@ -106,6 +134,63 @@ export default function NfcScannersPage() {
   const handleRefresh = async () => {
     setRefreshing(true)
     await Promise.all([fetchScanners(pagination.page), fetchMerchants()])
+  }
+
+  const handleCreateScanner = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setCreateError("")
+    
+    if (!createFormData.deviceId) {
+      setCreateError("Device ID is required")
+      return
+    }
+    
+    if (!createFormData.model) {
+      setCreateError("Model is required")
+      return
+    }
+    
+    setCreateLoading(true)
+    
+    try {
+      const payload: any = {
+        deviceId: createFormData.deviceId,
+        model: createFormData.model,
+        firmwareVersion: createFormData.firmwareVersion || undefined
+      }
+      
+      // If a merchant is selected, include it in the payload
+      if (createFormData.merchantId !== "unassigned") {
+        payload.merchantId = createFormData.merchantId
+      }
+      
+      const response = await fetch('/api/admin/nfc-scanners/create', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      })
+      
+      const data = await response.json()
+      
+      if (response.ok) {
+        setIsCreateDialogOpen(false)
+        setCreateFormData({
+          deviceId: "",
+          model: "",
+          firmwareVersion: "",
+          merchantId: "unassigned"
+        })
+        await Promise.all([fetchScanners(1), fetchMerchants()]) // Refresh both lists
+      } else {
+        setCreateError(data.message || 'Failed to create NFC scanner')
+      }
+    } catch (error) {
+      setCreateError('An error occurred while creating the NFC scanner')
+    } finally {
+      setCreateLoading(false)
+    }
   }
 
   const formatDate = (dateString: string) => {
@@ -188,7 +273,7 @@ export default function NfcScannersPage() {
             <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
             Refresh
           </Button>
-          <Dialog>
+          <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
             <DialogTrigger asChild>
               <Button className="bg-primary hover:bg-primary/90 shadow-sm">
                 <Plus className="mr-2 h-4 w-4" />
@@ -200,49 +285,102 @@ export default function NfcScannersPage() {
                 <DialogTitle>Add New NFC Scanner</DialogTitle>
                 <DialogDescription>Register a new NFC scanner and assign to merchant.</DialogDescription>
               </DialogHeader>
-              <div className="grid gap-4 py-4">
-                <div className="space-y-2">
-                  <Label htmlFor="device-id">Device ID</Label>
-                  <Input id="device-id" placeholder="NFC-2024-XXX" />
+              <form onSubmit={handleCreateScanner}>
+                <div className="grid gap-4 py-4">
+                  {createError && (
+                    <Alert variant="destructive">
+                      <AlertCircle className="h-4 w-4" />
+                      <AlertDescription>{createError}</AlertDescription>
+                    </Alert>
+                  )}
+                  <div className="space-y-2">
+                    <Label htmlFor="device-id">Device ID</Label>
+                    <Input 
+                      id="device-id" 
+                      placeholder="NFC-2024-XXX"
+                      value={createFormData.deviceId}
+                      onChange={(e) => setCreateFormData(prev => ({ ...prev, deviceId: e.target.value }))}
+                      required
+                      disabled={createLoading}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="model">Model</Label>
+                    <Select 
+                      value={createFormData.model} 
+                      onValueChange={(value) => setCreateFormData(prev => ({ ...prev, model: value }))}
+                      disabled={createLoading}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select model" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="TapyzeReader Pro">TapyzeReader Pro</SelectItem>
+                        <SelectItem value="TapyzeReader Lite">TapyzeReader Lite</SelectItem>
+                        <SelectItem value="TapyzeReader Mini">TapyzeReader Mini</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="assign-merchant">Assign to Merchant</Label>
+                    <Select 
+                      value={createFormData.merchantId} 
+                      onValueChange={(value) => setCreateFormData(prev => ({ ...prev, merchantId: value }))}
+                      disabled={createLoading}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select merchant without active scanner" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="unassigned">Leave Unassigned</SelectItem>
+                        {merchantsWithoutScanners.length > 0 ? (
+                          merchantsWithoutScanners.map((merchant) => (
+                            <SelectItem key={merchant._id} value={merchant._id}>
+                              {merchant.businessName} - {merchant.ownerName}
+                            </SelectItem>
+                          ))
+                        ) : (
+                          <SelectItem value="no-merchants" disabled>
+                            All merchants already have active scanners
+                          </SelectItem>
+                        )}
+                      </SelectContent>
+                    </Select>
+                    {merchantsWithoutScanners.length === 0 && (
+                      <p className="text-xs text-muted-foreground">
+                        All merchants currently have active NFC scanners assigned.
+                      </p>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="firmware-version">Firmware Version (Optional)</Label>
+                    <Input 
+                      id="firmware-version" 
+                      placeholder="e.g., v1.2.3"
+                      value={createFormData.firmwareVersion}
+                      onChange={(e) => setCreateFormData(prev => ({ ...prev, firmwareVersion: e.target.value }))}
+                      disabled={createLoading}
+                    />
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="model">Model</Label>
-                  <Select>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select model" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="TapyzeReader Pro">TapyzeReader Pro</SelectItem>
-                      <SelectItem value="TapyzeReader Lite">TapyzeReader Lite</SelectItem>
-                      <SelectItem value="TapyzeReader Mini">TapyzeReader Mini</SelectItem>
-                    </SelectContent>
-                  </Select>
+                <div className="flex justify-end gap-3">
+                  <Button 
+                    type="button" 
+                    variant="outline"
+                    onClick={() => setIsCreateDialogOpen(false)}
+                    disabled={createLoading}
+                  >
+                    Cancel
+                  </Button>
+                  <Button 
+                    type="submit" 
+                    className="bg-primary hover:bg-primary/90"
+                    disabled={createLoading}
+                  >
+                    {createLoading ? "Creating..." : "Add Scanner"}
+                  </Button>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="assign-merchant">Assign to Merchant (Optional)</Label>
-                  <Select>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select merchant or leave unassigned" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="unassigned">Leave Unassigned</SelectItem>
-                      {merchants.map((merchant) => (
-                        <SelectItem key={merchant._id} value={merchant._id}>
-                          {merchant.businessName} - {merchant.ownerName}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="firmware-version">Firmware Version</Label>
-                  <Input id="firmware-version" placeholder="e.g., v1.2.3" />
-                </div>
-              </div>
-              <div className="flex justify-end gap-3">
-                <Button variant="outline">Cancel</Button>
-                <Button className="bg-primary hover:bg-primary/90">Add Scanner</Button>
-              </div>
+              </form>
             </DialogContent>
           </Dialog>
         </div>
@@ -430,6 +568,50 @@ export default function NfcScannersPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Quick Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+        <Card>
+          <CardContent className="p-4">
+            <div className="text-2xl font-bold text-green-600">
+              {scanners.filter(scanner => scanner.status === 'ONLINE').length}
+            </div>
+            <p className="text-sm text-muted-foreground">Online Scanners</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="text-2xl font-bold text-orange-600">
+              {scanners.filter(scanner => !scanner.owner).length}
+            </div>
+            <p className="text-sm text-muted-foreground">Unassigned Scanners</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="text-2xl font-bold text-blue-600">
+              {merchantsWithoutScanners.length}
+            </div>
+            <p className="text-sm text-muted-foreground">Merchants Without Scanners</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="text-2xl font-bold text-gray-600">
+              {scanners.filter(scanner => scanner.status === 'OFFLINE').length}
+            </div>
+            <p className="text-sm text-muted-foreground">Offline Scanners</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="text-2xl font-bold text-red-600">
+              {scanners.filter(scanner => scanner.status === 'MAINTENANCE').length}
+            </div>
+            <p className="text-sm text-muted-foreground">In Maintenance</p>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   )
 }
