@@ -46,8 +46,12 @@ export default function AuthPage() {
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <div className="flex justify-center mb-4">
-            <div className="p-3 bg-primary rounded-full">
-              <Wallet className="h-8 w-8 text-white" />
+            <div className="p-1">
+              <img
+                src="/logo.png"
+                alt="Tapyze Logo"
+                className="h-24 w-24 object-cover"
+              />
             </div>
           </div>
           <CardTitle className="text-2xl font-bold">Tapyze Admin</CardTitle>
